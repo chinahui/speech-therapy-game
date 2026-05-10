@@ -52,19 +52,32 @@ export default function Game4_VolumeAdventure({ onBack }: Game4Props) {
   const detectVolume = useCallback(() => {
     if (!analyserRef.current || !gameActive) return
 
+    // 计算整体音量 - 使用RMS算法更准确反映实际音量
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
     analyserRef.current.getByteFrequencyData(dataArray)
     
-    // 计算整体音量
-    const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
-    const normalizedVolume = Math.min(average / 128, 1)
+    // 取人声主要频段（100Hz-4000Hz）的能量
+    const sampleRate = audioContextRef.current?.sampleRate || 44100
+    const binSize = sampleRate / analyserRef.current.frequencyBinCount
+    const lowBin = Math.floor(100 / binSize)   // 100Hz
+    const highBin = Math.floor(4000 / binSize)  // 4000Hz
+    
+    let sum = 0
+    let count = 0
+    for (let i = lowBin; i < highBin && i < dataArray.length; i++) {
+      sum += dataArray[i] * dataArray[i] // 能量值
+      count++
+    }
+    const rms = Math.sqrt(sum / Math.max(count, 1))
+    // 归一化：RMS范围0-255，阈值设为30（安静环境），最大值180（很大声）
+    const normalizedVolume = Math.min(Math.max((rms - 30) / 150, 0), 1)
     
     setVolume(normalizedVolume)
 
     // 根据音量控制气球高度
     // 音量0 = 高度0（最下面），音量1 = 高度100（最上面）
     const targetY = normalizedVolume * 100
-    setBalloonY((prev) => prev + (targetY - prev) * 0.1)
+    setBalloonY((prev) => prev + (targetY - prev) * 0.15)
   }, [gameActive])
 
   // 游戏循环
