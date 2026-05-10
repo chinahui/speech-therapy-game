@@ -144,7 +144,7 @@ const questions: Question[] = [
     dimensionLabel: '表达能力',
     type: 'naming',
     prompt: '这是什么水果？',
-    questionEmoji: '🍓',
+    questionEmoji: '🫐', // 蓝莓（不暴露答案是草莓）
     options: [
       { label: '苹果', emoji: '🍎', correct: false },
       { label: '草莓', emoji: '🍓', correct: true },
@@ -158,7 +158,7 @@ const questions: Question[] = [
     dimensionLabel: '表达能力',
     type: 'naming',
     prompt: '这是什么颜色？',
-    questionEmoji: '🔵',
+    questionEmoji: '🟣', // 紫色（不暴露答案是蓝色）
     options: [
       { label: '红色', emoji: '🔴', correct: false },
       { label: '蓝色', emoji: '🔵', correct: true },
@@ -186,7 +186,7 @@ const questions: Question[] = [
     dimensionLabel: '表达能力',
     type: 'naming',
     prompt: '这是什么天气？',
-    questionEmoji: '☀️',
+    questionEmoji: '🌈', // 彩虹（不暴露答案是晴天）
     options: [
       { label: '下雨天', emoji: '🌧️', correct: false },
       { label: '下雪天', emoji: '❄️', correct: false },
@@ -394,12 +394,17 @@ function useSpeechRecognition() {
     }
   }, [isListening])
 
+  const resetTranscript = useCallback(() => {
+    setTranscript('')
+  }, [])
+
   return {
     isListening,
     transcript,
     isSupported,
     startListening,
     stopListening,
+    resetTranscript,
   }
 }
 
@@ -443,7 +448,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
   const [result, setResult] = useState<AssessmentResult | null>(null)
 
   // 语音识别相关
-  const { isListening, transcript, isSupported, startListening, stopListening } = useSpeechRecognition()
+  const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } = useSpeechRecognition()
   const [voiceScore, setVoiceScore] = useState<number | null>(null)
   const [hasRecorded, setHasRecorded] = useState(false)
 
@@ -549,6 +554,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
       setShowFeedback(false)
       setVoiceScore(null)
       setHasRecorded(false)
+      resetTranscript()
       stopListening()
     } else {
       // 完成评估
@@ -585,6 +591,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
     setResult(null)
     setVoiceScore(null)
     setHasRecorded(false)
+    resetTranscript()
   }
 
   // 获取当前维度进度
@@ -973,6 +980,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                     setShowFeedback(false)
                     setVoiceScore(null)
                     setHasRecorded(false)
+                    resetTranscript()
                   } else {
                     setStep('welcome')
                   }
