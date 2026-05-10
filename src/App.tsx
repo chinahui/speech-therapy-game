@@ -1,23 +1,47 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Home, Gamepad2, Trophy, User } from 'lucide-react'
+import { Home, Gamepad2, Trophy, User, ClipboardList } from 'lucide-react'
 import HomePage from './pages/HomePage'
 import GamesPage from './pages/GamesPage'
 import ProfilePage from './pages/ProfilePage'
+import AssessmentPage from './pages/AssessmentPage'
+import LoginPage from './pages/LoginPage'
 import Game1_Matching from './games/Game1_Matching'
 import Game2_VoiceMagic from './games/Game2_VoiceMagic'
 import Game3_Bubbles from './games/Game3_Bubbles'
 import Game4_VolumeAdventure from './games/Game4_VolumeAdventure'
+import { getUser, type UserInfo } from './services/storage'
 
-type Page = 'home' | 'games' | 'profile' | 'game1' | 'game2' | 'game3' | 'game4'
+type Page = 'home' | 'games' | 'profile' | 'assessment' | 'login' | 'game1' | 'game2' | 'game3' | 'game4'
+
+const fullScreenPages: Page[] = ['game1', 'game2', 'game3', 'game4', 'assessment', 'login']
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('home')
+  const [currentUser, setCurrentUser] = useState<UserInfo | null>(getUser())
+
+  const handleLogin = (user: UserInfo) => {
+    setCurrentUser(user)
+    setCurrentPage('home')
+  }
+
+  const handleStartAssessment = () => {
+    if (!currentUser) {
+      setCurrentPage('login')
+    } else {
+      setCurrentPage('assessment')
+    }
+  }
 
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <HomePage onStart={() => setCurrentPage('games')} />
+        return (
+          <HomePage
+            onStart={() => setCurrentPage('games')}
+            onAssessment={handleStartAssessment}
+          />
+        )
       case 'games':
         return (
           <GamesPage
@@ -31,6 +55,20 @@ function App() {
         )
       case 'profile':
         return <ProfilePage />
+      case 'assessment':
+        return (
+          <AssessmentPage
+            onBack={() => setCurrentPage('home')}
+            onHome={() => setCurrentPage('home')}
+          />
+        )
+      case 'login':
+        return (
+          <LoginPage
+            onLogin={handleLogin}
+            onBack={() => setCurrentPage('home')}
+          />
+        )
       case 'game1':
         return <Game1_Matching onBack={() => setCurrentPage('games')} />
       case 'game2':
@@ -40,14 +78,19 @@ function App() {
       case 'game4':
         return <Game4_VolumeAdventure onBack={() => setCurrentPage('games')} />
       default:
-        return <HomePage onStart={() => setCurrentPage('games')} />
+        return (
+          <HomePage
+            onStart={() => setCurrentPage('games')}
+            onAssessment={handleStartAssessment}
+          />
+        )
     }
   }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* 主内容区 */}
-      <main style={{ flex: 1, paddingBottom: '80px' }}>
+      <main style={{ flex: 1, paddingBottom: fullScreenPages.includes(currentPage) ? '0' : '80px' }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={currentPage}
@@ -62,7 +105,7 @@ function App() {
       </main>
 
       {/* 底部导航 */}
-      {!['game1', 'game2', 'game3', 'game4'].includes(currentPage) && (
+      {!fullScreenPages.includes(currentPage) && (
         <nav
           style={{
             position: 'fixed',
@@ -90,10 +133,10 @@ function App() {
             onClick={() => setCurrentPage('games')}
           />
           <NavButton
-            icon={<Trophy size={24} />}
-            label="成就"
-            active={false}
-            onClick={() => {}}
+            icon={<ClipboardList size={24} />}
+            label="评估"
+            active={currentPage === 'assessment'}
+            onClick={handleStartAssessment}
           />
           <NavButton
             icon={<User size={24} />}

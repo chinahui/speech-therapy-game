@@ -1,11 +1,12 @@
 import { motion } from 'framer-motion'
-import { Sparkles, Star, Heart, Zap } from 'lucide-react'
+import { Sparkles, Star, Heart, Zap, ClipboardList } from 'lucide-react'
 
 interface HomePageProps {
   onStart: () => void
+  onAssessment: () => void
 }
 
-export default function HomePage({ onStart }: HomePageProps) {
+export default function HomePage({ onStart, onAssessment }: HomePageProps) {
   return (
     <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
       {/* 装饰元素 */}
@@ -80,16 +81,28 @@ export default function HomePage({ onStart }: HomePageProps) {
           和小伙伴们一起，快乐学说话！ 🎈
         </p>
 
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={onStart}
-          className="btn btn-primary"
-          style={{ fontSize: '20px', padding: '18px 48px' }}
-        >
-          <Sparkles size={24} />
-          开始游戏
-        </motion.button>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onStart}
+            className="btn btn-primary"
+            style={{ fontSize: '18px', padding: '16px 36px' }}
+          >
+            <Sparkles size={22} />
+            开始游戏
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onAssessment}
+            className="btn btn-secondary"
+            style={{ fontSize: '18px', padding: '16px 36px' }}
+          >
+            <ClipboardList size={22} />
+            开始评估
+          </motion.button>
+        </div>
       </motion.div>
 
       {/* 今日进度卡片 */}
