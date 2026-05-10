@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft,
@@ -13,6 +13,9 @@ import {
   MessageCircle,
   Eye,
   Users,
+  Mic,
+  MicOff,
+  VolumeX,
 } from 'lucide-react'
 import { saveAssessment, getLatestAssessment, getUser, generateId, formatDate, type AssessmentResult } from '../services/storage'
 
@@ -24,16 +27,22 @@ interface AssessmentPageProps {
 // ==================== 题目数据 ====================
 
 type Dimension = 'understanding' | 'expression' | 'pronunciation' | 'social'
+type QuestionType = 'image-select' | 'naming' | 'voice-repeat' | 'scenario'
 
 interface Question {
   id: number
   dimension: Dimension
   dimensionLabel: string
-  type: 'image-select' | 'naming' | 'repeat' | 'scenario'
+  type: QuestionType
   prompt: string
-  emoji: string
+  // 题目显示的图标（不暴露答案）
+  questionEmoji: string
+  // 选项（选择题用）
   options?: { label: string; emoji: string; correct: boolean }[]
+  // 发音题的正确答案
   correctAnswer?: string
+  // 语音合成要读的内容
+  speechText?: string
 }
 
 const questions: Question[] = [
@@ -44,7 +53,8 @@ const questions: Question[] = [
     dimensionLabel: '理解能力',
     type: 'image-select',
     prompt: '请点击红色的苹果',
-    emoji: '🍎',
+    questionEmoji: '👂', // 耳朵表示"听"
+    speechText: '请点击红色的苹果',
     options: [
       { label: '红苹果', emoji: '🍎', correct: true },
       { label: '绿苹果', emoji: '🍏', correct: false },
@@ -58,7 +68,8 @@ const questions: Question[] = [
     dimensionLabel: '理解能力',
     type: 'image-select',
     prompt: '请找到最大的动物',
-    emoji: '🐘',
+    questionEmoji: '👂',
+    speechText: '请找到最大的动物',
     options: [
       { label: '小猫', emoji: '🐱', correct: false },
       { label: '大象', emoji: '🐘', correct: true },
@@ -72,7 +83,8 @@ const questions: Question[] = [
     dimensionLabel: '理解能力',
     type: 'image-select',
     prompt: '哪个是可以在天上飞的？',
-    emoji: '✈️',
+    questionEmoji: '👂',
+    speechText: '哪个是可以在天上飞的？',
     options: [
       { label: '飞机', emoji: '✈️', correct: true },
       { label: '汽车', emoji: '🚗', correct: false },
@@ -86,7 +98,8 @@ const questions: Question[] = [
     dimensionLabel: '理解能力',
     type: 'image-select',
     prompt: '哪个是用来喝水的？',
-    emoji: '🥤',
+    questionEmoji: '👂',
+    speechText: '哪个是用来喝水的？',
     options: [
       { label: '杯子', emoji: '🥤', correct: true },
       { label: '帽子', emoji: '🎩', correct: false },
@@ -100,7 +113,8 @@ const questions: Question[] = [
     dimensionLabel: '理解能力',
     type: 'image-select',
     prompt: '请找到圆圆的东西',
-    emoji: '⚽',
+    questionEmoji: '👂',
+    speechText: '请找到圆圆的东西',
     options: [
       { label: '足球', emoji: '⚽', correct: true },
       { label: '铅笔', emoji: '✏️', correct: false },
@@ -116,10 +130,10 @@ const questions: Question[] = [
     dimensionLabel: '表达能力',
     type: 'naming',
     prompt: '这是什么动物？',
-    emoji: '🐶',
+    questionEmoji: '🐶', // 显示要命名的图片
     options: [
-      { label: '小狗', emoji: '🐶', correct: true },
-      { label: '小猫', emoji: '🐱', correct: false },
+      { label: '小狗', emoji: '🐕', correct: true },
+      { label: '小猫', emoji: '🐈', correct: false },
       { label: '兔子', emoji: '🐰', correct: false },
       { label: '小鸡', emoji: '🐥', correct: false },
     ],
@@ -130,7 +144,7 @@ const questions: Question[] = [
     dimensionLabel: '表达能力',
     type: 'naming',
     prompt: '这是什么水果？',
-    emoji: '🍓',
+    questionEmoji: '🍓',
     options: [
       { label: '苹果', emoji: '🍎', correct: false },
       { label: '草莓', emoji: '🍓', correct: true },
@@ -144,7 +158,7 @@ const questions: Question[] = [
     dimensionLabel: '表达能力',
     type: 'naming',
     prompt: '这是什么颜色？',
-    emoji: '🔵',
+    questionEmoji: '🔵',
     options: [
       { label: '红色', emoji: '🔴', correct: false },
       { label: '蓝色', emoji: '🔵', correct: true },
@@ -158,11 +172,11 @@ const questions: Question[] = [
     dimensionLabel: '表达能力',
     type: 'naming',
     prompt: '这个小朋友在做什么？',
-    emoji: '📚',
+    questionEmoji: '📚',
     options: [
       { label: '在睡觉', emoji: '😴', correct: false },
       { label: '在吃饭', emoji: '🍽️', correct: false },
-      { label: '在看书', emoji: '📚', correct: true },
+      { label: '在看书', emoji: '📖', correct: true },
       { label: '在跑步', emoji: '🏃', correct: false },
     ],
   },
@@ -172,7 +186,7 @@ const questions: Question[] = [
     dimensionLabel: '表达能力',
     type: 'naming',
     prompt: '这是什么天气？',
-    emoji: '☀️',
+    questionEmoji: '☀️',
     options: [
       { label: '下雨天', emoji: '🌧️', correct: false },
       { label: '下雪天', emoji: '❄️', correct: false },
@@ -181,76 +195,56 @@ const questions: Question[] = [
     ],
   },
 
-  // 发音能力 (5题) - 跟读词语
+  // 发音能力 (5题) - 语音跟读（真正的语音识别）
   {
     id: 11,
     dimension: 'pronunciation',
     dimensionLabel: '发音能力',
-    type: 'repeat',
-    prompt: '请跟读：苹果',
-    emoji: '🍎',
-    options: [
-      { label: '苹果', emoji: '🍎', correct: true },
-      { label: '平果', emoji: '🍏', correct: false },
-      { label: '果苹', emoji: '🍇', correct: false },
-      { label: '苹朵', emoji: '🌸', correct: false },
-    ],
+    type: 'voice-repeat',
+    prompt: '请跟读下面的词语：',
+    questionEmoji: '🎤',
+    correctAnswer: '苹果',
+    speechText: '苹果',
   },
   {
     id: 12,
     dimension: 'pronunciation',
     dimensionLabel: '发音能力',
-    type: 'repeat',
-    prompt: '请跟读：大象',
-    emoji: '🐘',
-    options: [
-      { label: '大象', emoji: '🐘', correct: true },
-      { label: '大像', emoji: '🖼️', correct: false },
-      { label: '大巷', emoji: '🏘️', correct: false },
-      { label: '大向', emoji: '🧭', correct: false },
-    ],
+    type: 'voice-repeat',
+    prompt: '请跟读下面的词语：',
+    questionEmoji: '🎤',
+    correctAnswer: '大象',
+    speechText: '大象',
   },
   {
     id: 13,
     dimension: 'pronunciation',
     dimensionLabel: '发音能力',
-    type: 'repeat',
-    prompt: '请跟读：蝴蝶',
-    emoji: '🦋',
-    options: [
-      { label: '蝴蝶', emoji: '🦋', correct: true },
-      { label: '湖蝶', emoji: '🌊', correct: false },
-      { label: '蝴爹', emoji: '🦗', correct: false },
-      { label: '蝴铁', emoji: '🔩', correct: false },
-    ],
+    type: 'voice-repeat',
+    prompt: '请跟读下面的词语：',
+    questionEmoji: '🎤',
+    correctAnswer: '蝴蝶',
+    speechText: '蝴蝶',
   },
   {
     id: 14,
     dimension: 'pronunciation',
     dimensionLabel: '发音能力',
-    type: 'repeat',
-    prompt: '请跟读：西瓜',
-    emoji: '🍉',
-    options: [
-      { label: '西瓜', emoji: '🍉', correct: true },
-      { label: '西爪', emoji: '🦀', correct: false },
-      { label: '希瓜', emoji: '🎃', correct: false },
-      { label: '细瓜', emoji: '🥒', correct: false },
-    ],
+    type: 'voice-repeat',
+    prompt: '请跟读下面的词语：',
+    questionEmoji: '🎤',
+    correctAnswer: '西瓜',
+    speechText: '西瓜',
   },
   {
     id: 15,
     dimension: 'pronunciation',
     dimensionLabel: '发音能力',
-    type: 'repeat',
-    prompt: '请跟读：彩虹',
-    emoji: '🌈',
-    options: [
-      { label: '彩虹', emoji: '🌈', correct: true },
-      { label: '菜虹', emoji: '🥬', correct: false },
-      { label: '彩红', emoji: '❤️', correct: false },
-      { label: '猜虹', emoji: '🤔', correct: false },
-    ],
+    type: 'voice-repeat',
+    prompt: '请跟读下面的词语：',
+    questionEmoji: '🎤',
+    correctAnswer: '彩虹',
+    speechText: '彩虹',
   },
 
   // 社交能力 (5题) - 情景选择
@@ -260,7 +254,7 @@ const questions: Question[] = [
     dimensionLabel: '社交能力',
     type: 'scenario',
     prompt: '见到朋友应该说什么？',
-    emoji: '👋',
+    questionEmoji: '🤝', // 握手表示社交场景
     options: [
       { label: '你好！', emoji: '👋', correct: true },
       { label: '走开！', emoji: '😤', correct: false },
@@ -274,7 +268,7 @@ const questions: Question[] = [
     dimensionLabel: '社交能力',
     type: 'scenario',
     prompt: '朋友把玩具给你玩，应该说什么？',
-    emoji: '🧸',
+    questionEmoji: '🎁',
     options: [
       { label: '还要！', emoji: '🤲', correct: false },
       { label: '谢谢！', emoji: '😊', correct: true },
@@ -288,7 +282,7 @@ const questions: Question[] = [
     dimensionLabel: '社交能力',
     type: 'scenario',
     prompt: '不小心撞到别人了，应该怎么做？',
-    emoji: '😅',
+    questionEmoji: '😅',
     options: [
       { label: '跑掉', emoji: '🏃', correct: false },
       { label: '笑一笑', emoji: '😄', correct: false },
@@ -302,7 +296,7 @@ const questions: Question[] = [
     dimensionLabel: '社交能力',
     type: 'scenario',
     prompt: '看到小朋友在哭，应该怎么做？',
-    emoji: '😢',
+    questionEmoji: '😢',
     options: [
       { label: '走开', emoji: '🚶', correct: false },
       { label: '问他怎么了', emoji: '🤗', correct: true },
@@ -316,7 +310,7 @@ const questions: Question[] = [
     dimensionLabel: '社交能力',
     type: 'scenario',
     prompt: '想加入小朋友们的游戏，应该怎么说？',
-    emoji: '🎮',
+    questionEmoji: '🎮',
     options: [
       { label: '我可以一起玩吗？', emoji: '😊', correct: true },
       { label: '给我玩！', emoji: '😤', correct: false },
@@ -335,6 +329,105 @@ const dimensionConfig: Record<Dimension, { icon: React.ReactNode; color: string;
   social: { icon: <Users size={20} />, color: '#C7CEEA', label: '社交能力' },
 }
 
+// ==================== 语音识别 Hook ====================
+
+function useSpeechRecognition() {
+  const [isListening, setIsListening] = useState(false)
+  const [transcript, setTranscript] = useState('')
+  const [isSupported, setIsSupported] = useState(true)
+  const recognitionRef = useRef<any>(null)
+
+  useEffect(() => {
+    // @ts-ignore
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+
+    if (!SpeechRecognition) {
+      setIsSupported(false)
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'zh-CN'
+    recognition.continuous = false
+    recognition.interimResults = false
+
+    recognition.onresult = (event: any) => {
+      const result = event.results[0][0].transcript
+      setTranscript(result)
+      setIsListening(false)
+    }
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error)
+      setIsListening(false)
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+    }
+
+    recognitionRef.current = recognition
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort()
+      }
+    }
+  }, [])
+
+  const startListening = useCallback(() => {
+    setTranscript('')
+    if (recognitionRef.current && !isListening) {
+      try {
+        recognitionRef.current.start()
+        setIsListening(true)
+      } catch (e) {
+        console.error('Failed to start recognition:', e)
+      }
+    }
+  }, [isListening])
+
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current && isListening) {
+      recognitionRef.current.stop()
+      setIsListening(false)
+    }
+  }, [isListening])
+
+  return {
+    isListening,
+    transcript,
+    isSupported,
+    startListening,
+    stopListening,
+  }
+}
+
+// ==================== 相似度计算 ====================
+
+function calculateSimilarity(str1: string, str2: string): number {
+  // Levenshtein 距离
+  const len1 = str1.length
+  const len2 = str2.length
+  const dp: number[][] = Array(len1 + 1)
+    .fill(null)
+    .map(() => Array(len2 + 1).fill(0))
+
+  for (let i = 0; i <= len1; i++) dp[i][0] = i
+  for (let j = 0; j <= len2; j++) dp[0][j] = j
+
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+    }
+  }
+
+  const distance = dp[len1][len2]
+  const maxLen = Math.max(len1, len2)
+  return maxLen === 0 ? 1 : 1 - distance / maxLen
+}
+
 // ==================== 主组件 ====================
 
 type Step = 'welcome' | 'test' | 'result'
@@ -343,29 +436,70 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
   const [step, setStep] = useState<Step>('welcome')
   const [ageGroup, setAgeGroup] = useState<string>('')
   const [currentQuestion, setCurrentQuestion] = useState(0)
-  const [answers, setAnswers] = useState<number[]>([]) // 0=错 1=对
+  const [answers, setAnswers] = useState<number[]>([]) // 0-100 分数
   const [selectedOption, setSelectedOption] = useState<number | null>(null)
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedbackCorrect, setFeedbackCorrect] = useState(false)
   const [result, setResult] = useState<AssessmentResult | null>(null)
 
+  // 语音识别相关
+  const { isListening, transcript, isSupported, startListening, stopListening } = useSpeechRecognition()
+  const [voiceScore, setVoiceScore] = useState<number | null>(null)
+  const [hasRecorded, setHasRecorded] = useState(false)
+
   const user = getUser()
   const lastAssessment = getLatestAssessment()
+
+  // 语音合成播放
+  const speak = (text: string) => {
+    // @ts-ignore
+    if ('speechSynthesis' in window) {
+      // @ts-ignore
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.lang = 'zh-CN'
+      utterance.rate = 0.8
+      // @ts-ignore
+      speechSynthesis.speak(utterance)
+    }
+  }
+
+  // 当语音识别结果变化时计算分数
+  useEffect(() => {
+    const question = questions[currentQuestion]
+    if (question.type === 'voice-repeat' && transcript && !voiceScore) {
+      const similarity = calculateSimilarity(transcript, question.correctAnswer || '')
+      const score = Math.round(similarity * 100)
+      setVoiceScore(score)
+      setHasRecorded(true)
+
+      // 自动提交结果
+      const isCorrect = score >= 60
+      setFeedbackCorrect(isCorrect)
+      setShowFeedback(true)
+
+      const newAnswers = [...answers, score]
+      setAnswers(newAnswers)
+    }
+  }, [transcript, currentQuestion, voiceScore, answers])
 
   // 计算各维度得分
   const dimensionScores = useMemo(() => {
     if (answers.length === 0) return null
     const scores = { understanding: 0, expression: 0, pronunciation: 0, social: 0 }
+    const counts = { understanding: 0, expression: 0, pronunciation: 0, social: 0 }
+
     questions.forEach((q, i) => {
       if (i < answers.length) {
         scores[q.dimension] += answers[i]
+        counts[q.dimension]++
       }
     })
+
     return {
-      understanding: Math.round((scores.understanding / 5) * 100),
-      expression: Math.round((scores.expression / 5) * 100),
-      pronunciation: Math.round((scores.pronunciation / 5) * 100),
-      social: Math.round((scores.social / 5) * 100),
+      understanding: Math.round((scores.understanding / (counts.understanding * 100)) * 100),
+      expression: Math.round((scores.expression / (counts.expression * 100)) * 100),
+      pronunciation: Math.round((scores.pronunciation / (counts.pronunciation * 100)) * 100),
+      social: Math.round((scores.social / (counts.social * 100)) * 100),
     }
   }, [answers])
 
@@ -395,8 +529,16 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
     setShowFeedback(true)
     setFeedbackCorrect(isCorrect)
 
-    const newAnswers = [...answers, isCorrect ? 1 : 0]
+    // 选择题：正确100分，错误0分
+    const score = isCorrect ? 100 : 0
+    const newAnswers = [...answers, score]
     setAnswers(newAnswers)
+  }
+
+  // 处理语音题提交
+  const handleVoiceSubmit = () => {
+    if (!hasRecorded || voiceScore === null) return
+    // 已经在 useEffect 中处理了
   }
 
   // 下一题
@@ -405,6 +547,9 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
       setCurrentQuestion(currentQuestion + 1)
       setSelectedOption(null)
       setShowFeedback(false)
+      setVoiceScore(null)
+      setHasRecorded(false)
+      stopListening()
     } else {
       // 完成评估
       const scores = dimensionScores!
@@ -438,6 +583,8 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
     setSelectedOption(null)
     setShowFeedback(false)
     setResult(null)
+    setVoiceScore(null)
+    setHasRecorded(false)
   }
 
   // 获取当前维度进度
@@ -587,6 +734,9 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
 
   // ==================== 渲染 ====================
 
+  const currentQ = questions[currentQuestion]
+  const isVoiceQuestion = currentQ?.type === 'voice-repeat'
+
   return (
     <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
       <AnimatePresence mode="wait">
@@ -684,7 +834,9 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                       <div style={{ fontWeight: 700, fontSize: '14px', color: '#4A4A4A' }}>
                         {config.label}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#888' }}>5道趣味题目</div>
+                      <div style={{ fontSize: '12px', color: '#888' }}>
+                        {key === 'pronunciation' ? '5道语音跟读题' : '5道趣味题目'}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -819,6 +971,8 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                     setAnswers(answers.slice(0, -1))
                     setSelectedOption(null)
                     setShowFeedback(false)
+                    setVoiceScore(null)
+                    setHasRecorded(false)
                   } else {
                     setStep('welcome')
                   }
@@ -851,8 +1005,8 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                 style={{
                   padding: '6px 14px',
                   borderRadius: '20px',
-                  background: `${dimensionConfig[questions[currentQuestion].dimension].color}20`,
-                  color: dimensionConfig[questions[currentQuestion].dimension].color,
+                  background: `${dimensionConfig[currentQ.dimension].color}20`,
+                  color: dimensionConfig[currentQ.dimension].color,
                   fontSize: '12px',
                   fontWeight: 700,
                   display: 'flex',
@@ -860,8 +1014,8 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                   gap: '4px',
                 }}
               >
-                {dimensionConfig[questions[currentQuestion].dimension].icon}
-                {questions[currentQuestion].dimensionLabel}
+                {dimensionConfig[currentQ.dimension].icon}
+                {currentQ.dimensionLabel}
               </div>
             </div>
 
@@ -871,7 +1025,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                 className="progress-fill"
                 style={{
                   width: `${((currentQuestion + 1) / questions.length) * 100}%`,
-                  background: `linear-gradient(90deg, ${dimensionConfig[questions[currentQuestion].dimension].color}, ${dimensionConfig[questions[currentQuestion].dimension].color}CC)`,
+                  background: `linear-gradient(90deg, ${dimensionConfig[currentQ.dimension].color}, ${dimensionConfig[currentQ.dimension].color}CC)`,
                 }}
               />
             </div>
@@ -891,7 +1045,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                 className="card"
                 style={{ padding: '32px 24px', marginBottom: '20px' }}
               >
-                {/* 题目 emoji */}
+                {/* 题目图标 */}
                 <motion.div
                   animate={{ scale: [1, 1.1, 1] }}
                   transition={{ duration: 0.6 }}
@@ -901,7 +1055,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                     marginBottom: '16px',
                   }}
                 >
-                  {questions[currentQuestion].emoji}
+                  {currentQ.questionEmoji}
                 </motion.div>
 
                 {/* 题目文字 */}
@@ -915,93 +1069,230 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                     lineHeight: 1.4,
                   }}
                 >
-                  {questions[currentQuestion].prompt}
+                  {currentQ.prompt}
                 </h2>
 
-                {/* 选项 */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, 1fr)',
-                    gap: '12px',
-                  }}
-                >
-                  {questions[currentQuestion].options!.map((option, idx) => {
-                    const isSelected = selectedOption === idx
-                    const isCorrectOption = option.correct
-                    let borderColor = '#E8E8E8'
-                    let bgColor = '#FAFAFA'
-                    let extraStyle: React.CSSProperties = {}
+                {/* 发音题：显示要跟读的词语 */}
+                {isVoiceQuestion && (
+                  <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                    <motion.div
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      style={{
+                        display: 'inline-block',
+                        padding: '16px 32px',
+                        background: 'linear-gradient(135deg, #FFE66D 0%, #FFD93D 100%)',
+                        borderRadius: '20px',
+                        fontSize: '36px',
+                        fontWeight: 800,
+                        color: '#4A4A4A',
+                        boxShadow: '0 4px 15px rgba(255, 230, 109, 0.4)',
+                      }}
+                    >
+                      {currentQ.correctAnswer}
+                    </motion.div>
 
-                    if (showFeedback) {
-                      if (isCorrectOption) {
-                        borderColor = '#95E1D3'
-                        bgColor = '#E8F6F5'
-                      } else if (isSelected && !isCorrectOption) {
-                        borderColor = '#F38181'
-                        bgColor = '#FFF0F0'
-                      } else {
-                        extraStyle = { opacity: 0.5 }
-                      }
-                    } else if (isSelected) {
-                      borderColor = '#FF6B9D'
-                      bgColor = '#FFF0F5'
-                    }
-
-                    return (
+                    {/* 播放按钮 */}
+                    <div style={{ marginTop: '16px' }}>
                       <motion.button
-                        key={idx}
-                        whileHover={!showFeedback ? { scale: 1.03 } : undefined}
-                        whileTap={!showFeedback ? { scale: 0.97 } : undefined}
-                        onClick={() => handleSelectOption(idx)}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => speak(currentQ.speechText || currentQ.correctAnswer || '')}
                         style={{
-                          padding: '16px 12px',
-                          borderRadius: '16px',
-                          border: `2px solid ${borderColor}`,
-                          background: bgColor,
-                          cursor: showFeedback ? 'default' : 'pointer',
-                          transition: 'all 0.3s',
-                          fontFamily: 'inherit',
-                          textAlign: 'center',
-                          display: 'flex',
-                          flexDirection: 'column',
+                          background: '#4ECDC4',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '48px',
+                          height: '48px',
+                          display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '6px',
-                          ...extraStyle,
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          color: 'white',
                         }}
                       >
-                        <span style={{ fontSize: '32px' }}>{option.emoji}</span>
-                        <span style={{ fontSize: '14px', fontWeight: 600, color: '#4A4A4A' }}>
-                          {option.label}
-                        </span>
-                        {showFeedback && isCorrectOption && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: 'spring', stiffness: 300 }}
-                          >
-                            <CheckCircle2 size={20} color="#95E1D3" />
-                          </motion.div>
-                        )}
-                        {showFeedback && isSelected && !isCorrectOption && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: 'spring', stiffness: 300 }}
-                          >
-                            <XCircle size={20} color="#F38181" />
-                          </motion.div>
-                        )}
+                        <Volume2 size={24} />
                       </motion.button>
-                    )
-                  })}
-                </div>
+                      <p style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>点击听发音</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* 选择题选项 */}
+                {!isVoiceQuestion && currentQ.options && (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: '12px',
+                    }}
+                  >
+                    {currentQ.options.map((option, idx) => {
+                      const isSelected = selectedOption === idx
+                      const isCorrectOption = option.correct
+                      let borderColor = '#E8E8E8'
+                      let bgColor = '#FAFAFA'
+                      let extraStyle: React.CSSProperties = {}
+
+                      if (showFeedback) {
+                        if (isCorrectOption) {
+                          borderColor = '#95E1D3'
+                          bgColor = '#E8F6F5'
+                        } else if (isSelected && !isCorrectOption) {
+                          borderColor = '#F38181'
+                          bgColor = '#FFF0F0'
+                        } else {
+                          extraStyle = { opacity: 0.5 }
+                        }
+                      } else if (isSelected) {
+                        borderColor = '#FF6B9D'
+                        bgColor = '#FFF0F5'
+                      }
+
+                      return (
+                        <motion.button
+                          key={idx}
+                          whileHover={!showFeedback ? { scale: 1.03 } : undefined}
+                          whileTap={!showFeedback ? { scale: 0.97 } : undefined}
+                          onClick={() => handleSelectOption(idx)}
+                          style={{
+                            padding: '16px 12px',
+                            borderRadius: '16px',
+                            border: `2px solid ${borderColor}`,
+                            background: bgColor,
+                            cursor: showFeedback ? 'default' : 'pointer',
+                            transition: 'all 0.3s',
+                            fontFamily: 'inherit',
+                            textAlign: 'center',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '6px',
+                            ...extraStyle,
+                          }}
+                        >
+                          <span style={{ fontSize: '32px' }}>{option.emoji}</span>
+                          <span style={{ fontSize: '14px', fontWeight: 600, color: '#4A4A4A' }}>
+                            {option.label}
+                          </span>
+                          {showFeedback && isCorrectOption && (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 300 }}
+                            >
+                              <CheckCircle2 size={20} color="#95E1D3" />
+                            </motion.div>
+                          )}
+                          {showFeedback && isSelected && !isCorrectOption && (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 300 }}
+                            >
+                              <XCircle size={20} color="#F38181" />
+                            </motion.div>
+                          )}
+                        </motion.button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* 发音题：录音按钮 */}
+                {isVoiceQuestion && !showFeedback && (
+                  <div style={{ textAlign: 'center' }}>
+                    {!isSupported ? (
+                      <div style={{ padding: '20px', background: '#FFF0F0', borderRadius: '16px' }}>
+                        <p style={{ color: '#E74C3C', fontSize: '14px' }}>
+                          您的浏览器不支持语音识别，请使用 Chrome 浏览器
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={isListening ? stopListening : startListening}
+                          style={{
+                            background: isListening ? '#F38181' : '#FF6B9D',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '80px',
+                            height: '80px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: 'white',
+                            boxShadow: isListening
+                              ? '0 0 30px rgba(243, 129, 129, 0.5)'
+                              : '0 4px 20px rgba(255, 107, 157, 0.4)',
+                          }}
+                        >
+                          {isListening ? <MicOff size={36} /> : <Mic size={36} />}
+                        </motion.button>
+                        <p style={{ fontSize: '14px', color: '#888', marginTop: '12px' }}>
+                          {isListening ? '正在听...请大声跟读' : '点击麦克风开始跟读'}
+                        </p>
+
+                        {/* 识别结果 */}
+                        {transcript && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            style={{
+                              marginTop: '16px',
+                              padding: '12px 20px',
+                              background: '#F5F5F5',
+                              borderRadius: '12px',
+                            }}
+                          >
+                            <span style={{ fontSize: '12px', color: '#888' }}>你说的是：</span>
+                            <span style={{ fontSize: '18px', fontWeight: 700, color: '#4A4A4A', marginLeft: '8px' }}>
+                              {transcript}
+                            </span>
+                          </motion.div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* 发音题反馈 */}
+                {isVoiceQuestion && showFeedback && (
+                  <div style={{ textAlign: 'center' }}>
+                    <div
+                      style={{
+                        padding: '20px',
+                        borderRadius: '16px',
+                        background: voiceScore && voiceScore >= 60 ? '#E8F6F5' : '#FFF0F0',
+                      }}
+                    >
+                      <p style={{ fontSize: '14px', color: '#888', marginBottom: '8px' }}>你的发音得分</p>
+                      <div
+                        style={{
+                          fontSize: '48px',
+                          fontWeight: 800,
+                          color: voiceScore && voiceScore >= 60 ? '#2A9D8F' : '#E74C3C',
+                        }}
+                      >
+                        {voiceScore}分
+                      </div>
+                      {transcript && (
+                        <p style={{ fontSize: '13px', color: '#888', marginTop: '8px' }}>
+                          识别结果：{transcript}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </motion.div>
             </AnimatePresence>
 
-            {/* 即时反馈 */}
+            {/* 即时反馈（选择题） */}
             <AnimatePresence>
-              {showFeedback && (
+              {showFeedback && !isVoiceQuestion && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
