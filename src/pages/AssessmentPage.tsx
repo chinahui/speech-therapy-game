@@ -146,10 +146,10 @@ const questions: Question[] = [
     prompt: '这是什么水果？',
     questionEmoji: '🫐', // 蓝莓（不暴露答案是草莓）
     options: [
-      { label: '苹果', emoji: '🍎', correct: false },
-      { label: '草莓', emoji: '🍓', correct: true },
-      { label: '西瓜', emoji: '🍉', correct: false },
-      { label: '桃子', emoji: '🍑', correct: false },
+      { label: '苹果', emoji: '', correct: false },
+      { label: '草莓', emoji: '', correct: true },
+      { label: '西瓜', emoji: '', correct: false },
+      { label: '桃子', emoji: '', correct: false },
     ],
   },
   {
@@ -160,10 +160,10 @@ const questions: Question[] = [
     prompt: '这是什么颜色？',
     questionEmoji: '🟣', // 紫色（不暴露答案是蓝色）
     options: [
-      { label: '红色', emoji: '🔴', correct: false },
-      { label: '蓝色', emoji: '🔵', correct: true },
-      { label: '绿色', emoji: '🟢', correct: false },
-      { label: '黄色', emoji: '🟡', correct: false },
+      { label: '红色', emoji: '', correct: false },
+      { label: '蓝色', emoji: '', correct: true },
+      { label: '绿色', emoji: '', correct: false },
+      { label: '黄色', emoji: '', correct: false },
     ],
   },
   {
@@ -188,10 +188,10 @@ const questions: Question[] = [
     prompt: '这是什么天气？',
     questionEmoji: '🌈', // 彩虹（不暴露答案是晴天）
     options: [
-      { label: '下雨天', emoji: '🌧️', correct: false },
-      { label: '下雪天', emoji: '❄️', correct: false },
-      { label: '晴天', emoji: '☀️', correct: true },
-      { label: '大风天', emoji: '💨', correct: false },
+      { label: '下雨天', emoji: '', correct: false },
+      { label: '下雪天', emoji: '', correct: false },
+      { label: '晴天', emoji: '', correct: true },
+      { label: '大风天', emoji: '', correct: false },
     ],
   },
 
@@ -451,6 +451,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
   const { isListening, transcript, isSupported, startListening, stopListening, resetTranscript } = useSpeechRecognition()
   const [voiceScore, setVoiceScore] = useState<number | null>(null)
   const [hasRecorded, setHasRecorded] = useState(false)
+  const processedQuestionRef = useRef<number | null>(null)
 
   const user = getUser()
   const lastAssessment = getLatestAssessment()
@@ -471,7 +472,9 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
   // 当语音识别结果变化时计算分数
   useEffect(() => {
     const question = questions[currentQuestion]
-    if (question.type === 'voice-repeat' && transcript && !voiceScore) {
+    // 使用 ref 确保每道题只处理一次识别结果
+    if (question.type === 'voice-repeat' && transcript && processedQuestionRef.current !== currentQuestion) {
+      processedQuestionRef.current = currentQuestion
       const similarity = calculateSimilarity(transcript, question.correctAnswer || '')
       const score = Math.round(similarity * 100)
       setVoiceScore(score)
@@ -485,7 +488,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
       const newAnswers = [...answers, score]
       setAnswers(newAnswers)
     }
-  }, [transcript, currentQuestion, voiceScore, answers])
+  }, [transcript, currentQuestion, answers])
 
   // 计算各维度得分
   const dimensionScores = useMemo(() => {
@@ -554,6 +557,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
       setShowFeedback(false)
       setVoiceScore(null)
       setHasRecorded(false)
+      processedQuestionRef.current = null
       resetTranscript()
       stopListening()
     } else {
@@ -591,6 +595,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
     setResult(null)
     setVoiceScore(null)
     setHasRecorded(false)
+    processedQuestionRef.current = null
     resetTranscript()
   }
 
@@ -980,6 +985,7 @@ export default function AssessmentPage({ onBack, onHome }: AssessmentPageProps) 
                     setShowFeedback(false)
                     setVoiceScore(null)
                     setHasRecorded(false)
+                    processedQuestionRef.current = null
                     resetTranscript()
                   } else {
                     setStep('welcome')

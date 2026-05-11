@@ -95,9 +95,9 @@ export default function Game3_Bubbles({ onBack }: Game3Props) {
         return prev
           .map((bubble) => ({
             ...bubble,
-            y: bubble.y - bubble.speed,
+            y: bubble.y - bubble.speed, // 百分比递减
           }))
-          .filter((bubble) => bubble.y > -100)
+          .filter((bubble) => bubble.y > -20) // 百分比边界
       })
 
       animationRef.current = requestAnimationFrame(gameLoop)
@@ -120,14 +120,16 @@ export default function Game3_Bubbles({ onBack }: Game3Props) {
       const newBubble: Bubble = {
         id: Date.now() + Math.random(),
         x: 10 + Math.random() * 80, // 10% - 90% 屏幕宽度
-        y: window.innerHeight + 50,
+        y: 110, // 从屏幕底部下方开始（百分比）
         size: 60 + Math.random() * 40,
-        speed: 1 + Math.random() * 2,
+        speed: 0.3 + Math.random() * 0.4, // 百分比速度
         color: BUBBLE_COLORS[Math.floor(Math.random() * BUBBLE_COLORS.length)],
       }
       setBubbles((prev) => [...prev, newBubble])
     }
 
+    // 立即生成第一个泡泡
+    spawnBubble()
     const interval = setInterval(spawnBubble, 1500)
     return () => clearInterval(interval)
   }, [gameActive])
@@ -328,7 +330,7 @@ export default function Game3_Bubbles({ onBack }: Game3Props) {
             style={{
               position: 'absolute',
               left: `${bubble.x}%`,
-              top: bubble.y,
+              top: `${bubble.y}%`,
               width: bubble.size,
               height: bubble.size,
               borderRadius: '50%',
